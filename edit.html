@@ -1,0 +1,191 @@
+<?php
+session_start();
+
+$edit_idx = (isset($_SESSION['edit_idx']) && $_SESSION['edit_idx'] != '' && is_numeric($_SESSION['edit_idx'])) ? $_SESSION['edit_idx'] : '';
+
+$idx = (isset($_GET['idx']) && $_GET['idx'] != '' && is_numeric($_GET['idx'])) ? $_GET['idx'] : '';
+
+if ($edit_idx == '') {
+    die("<script>alert('게시물 번호가 없습니다.'); history.go(-1);</script>");
+}
+
+if ($edit_idx != $idx) {
+    die("<script>alert('수정권한이 없는 게시물입니다.'); history.go(-1);</script>");
+}
+
+include 'dbconfig.php';
+include 'config.php';
+
+$sql = "SELECT * FROM mboard WHERE idx=:idx";
+$stmt = $conn->prepare($sql);
+$stmt->bindParam(':idx', $idx);
+$stmt->setFetchMode(PDO::FETCH_ASSOC);
+$stmt->execute();
+
+$row = $stmt->fetch();
+
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        <?=$board_title ?> 글수정
+    </title>
+
+    <!-- bootstrap Include via CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+
+
+    <!-- summernote -->
+    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+        integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+        crossorigin="anonymous"></script>
+    <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+</head>
+
+<body>
+    <!-- container로 틀 간격 -->
+    <div class="container">
+        <!-- class="mt-2" 위 간격 -->
+        <div class="mt-4 mb-3">
+            <span class="h2">
+                <?= $board_title ?>
+            </span>
+        </div>
+        <!-- class="mb-2" 아래 간격, "d-flex" 나란히 배치, "gap-2" 좌우 간격 -->
+        <div class="mb-2 d-flex gap-2">
+            <!-- class="form-control" 은 버튼이 꽉차게, "w-25" 컨테이너의 25퍼센트만 사용, autocomplete="off" 자동완성 끄기-->
+            <input type="text" name="name" value="<?= $row['name'] ?>" class="form-control w-25" placeholder="글쓴이" autocomplete="off" id="id_name">
+            <input type="password" name="password" class="form-control w-25" placeholder="비밀번호" autocomplete="off"
+                id="id_password">
+        </div>
+        <div>
+            <input type=" text" name="subject" value="<?= $row['subject'] ?>" class="form-control mb-2" autocomplete="off" id="id_subject">
+        </div>
+
+
+        <div id="summernote"></div>
+
+        <!-- class="justify-content-end" 맨 뒤로 보내기 -->
+        <div class="mt-2 d-flex gap-2 justify-content-end">
+            <button class="btn btn-primary" id="btn_submit">확인</button>
+            <button class="btn btn-secondary" id="btn_list">목록</button>
+        </div>
+    </div>
+    <!-- 버튼 기능 -->
+    <!-- summernote 다운 -->
+    <script>
+        const btn_submit = document.querySelector('#btn_submit')
+        btn_submit.addEventListener("click", () => {
+            const id_name = document.querySelector('#id_name')
+            const id_password = document.querySelector('#id_password')
+            const id_subject = document.querySelector('#id_subject')
+
+            //입력 여부 확인
+            if (id_name.value == '') {
+                alert('글쓴이를 입력하시오.')
+                id_name.focus()
+                return false
+            }
+
+            if (id_subject.value == '') {
+                alert('제목을 입력하시오.')
+                id_subject.focus()
+                return false
+            }
+
+            const markupStr = $('#summernote').summernote('code');
+
+            if (markupStr == '<p><br></p>') {
+                alert('내용을 입력하세요.')
+                return false
+            }
+
+            // 홈페이지 구분
+            const aa = window.location.search.replace("?", "").split(/[=?&]/)
+            let param = {}
+
+            for (let i = 0; i < aa.length; i++) {
+                param[aa[i]] = aa[++i]
+            }
+
+            const code = param['code']
+
+            const f1 = new FormData()
+
+            f1.append('name', id_name.value)
+            f1.append('password', id_password.value)
+            f1.append('subject', id_subject.value)
+            f1.append('content', markupStr)
+            f1.append('code', code)
+            f1.append('idx', param['idx'])
+
+            // Ajax 전송 방식
+            const xhr = new XMLHttpRequest()
+            xhr.open("post", "./edit.php", "true")
+            xhr.send(f1)
+            btn_submit.disabled = true // 글 두번 전송 막기
+            xhr.onload = () => {
+                if (xhr.status == 200) {
+
+                    const data = JSON.parse(xhr.responseText)
+                    if (data.result == 'success') {
+                        alert('글이 성공적으로 수정되었습니다.')
+                        self.location.href = '/view.html?code=' + code + '&idx=' + param['idx'];
+                    } else if(data.result == 'denied') {
+                        alert('수정 권한이 없습니다.')
+                        self.location.href = '/list.html?code=' + code;
+                    } else {
+                        alert('글 수정이 실패했습니다.')
+                    }
+
+                } else {
+                    alert('통신에 실패했습니다.')
+                }
+            }
+        })
+
+        // summernote 편집
+        $('#summernote').summernote({
+            placeholder: '글 내용을 입력하시오.',
+            tabsize: 2,
+            height: 600,
+            toolbar: [
+                ['style', ['style']],
+                ['font', ['bold', 'underline', 'clear']],
+                ['color', ['color']],
+                ['para', ['ul', 'ol', 'paragraph']],
+                ['table', ['table']],
+                ['insert', ['link', 'picture', 'video']],
+                ['view', ['fullscreen', 'codeview', 'help']]
+            ]
+        });
+
+        var markupStr = `<?= $row['content'] ?>`;
+        $('#summernote').summernote('code', markupStr);
+
+        const splited = window.location.search.replace("?", "").split(/[=?&]/);
+        let param = {}
+        for (let i = 0; i < splited.length; i++) {
+            param[splited[i]] = splited[++i]
+        }
+        
+        const btn_list = document.querySelector("#btn_list")
+        btn_list.addEventListener("click", () => {
+
+
+
+            self.location.href = './list.html?code=' + param["code"]
+            //self.location.href='./list.html?code=<?= $_GET['code']; ?>'
+        })
+    </script>
+
+</body>
+
+</html>
